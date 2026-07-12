@@ -1,0 +1,7 @@
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/serial_xml_targets.cmake")
+
+if(NOT TARGET serial_xml)
+  add_library(serial_xml ALIAS serial_xml::serial_xml)
+endif()
