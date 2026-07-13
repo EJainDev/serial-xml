@@ -167,13 +167,12 @@ template <std::meta::info m> consteval auto get_annotations() {
           : std::optional<std::pair<char const *, char const *>>(std::nullopt)};
 }
 
-export template <typename T>
+template <typename T>
   requires(std::is_class_v<T>)
-std::string to_xml(const T &value, bool first = true,
-                   const std::string &fixed_name = "") {
-  std::string result;
-  result.reserve(4096); // Arbitrary size to avoid too many reallocations
+void to_xml(const T &value, std::string &result, bool first,
+            const std::string &fixed_name = "") {
   if (first) {
+    result.reserve(4096);
     result = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
   }
 
@@ -231,7 +230,7 @@ std::string to_xml(const T &value, bool first = true,
                   (!std::formattable<typename[:std::meta::type_of(m):], char> ||
                    is_add) &&
                   !is_attribute && !is_no_iter) {
-      body += to_xml(value.[:m:], false);
+      to_xml(value.[:m:], body, false);
     } else if constexpr (unpack_names.has_value() &&
                          std::meta::is_class_type(std::meta::type_of(m)) &&
                          std::ranges::range<
@@ -256,8 +255,7 @@ std::string to_xml(const T &value, bool first = true,
                            typename[:std::meta::type_of(m):], char> ||
                        is_add) &&
                       !is_attribute && !is_no_iter) {
-          body += to_xml<decltype(item)>(item, false,
-                                         std::string(unpack_names->first));
+          to_xml(item, body, false, unpack_names->first);
         } else {
           std::string val;
           if (custom_format) {
@@ -324,7 +322,13 @@ std::string to_xml(const T &value, bool first = true,
   } else {
     result += std::format(">{}</{}>", body, name);
   }
+}
 
+export template <typename T>
+  requires(std::is_class_v<T>)
+std::string to_xml(const T &value) {
+  std::string result;
+  to_xml(value, result, true);
   return result;
 }
 
