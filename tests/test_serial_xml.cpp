@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
 
-import serial_xml;
 import std;
+
+import serial_xml;
 
 std::string clean_to_xml(auto obj) {
   return serial_xml::to_xml(obj).substr(
@@ -58,4 +59,13 @@ TEST(Basic, StructWithNameAndChild) {
   StructWithNameAndChild obj{42};
 
   ASSERT_EQ(clean_to_xml(obj), "<MyStruct><x>42</x></MyStruct>");
+}
+
+TEST(Basic, StructWithChild) {
+  struct StructWithChild {
+    int x;
+  };
+  StructWithChild obj{42};
+
+  ASSERT_EQ(clean_to_xml(obj), "<StructWithChild><x>42</x></StructWithChild>");
 }

@@ -26,6 +26,18 @@ export constexpr const no_iter_ no_iter = no_iter_{};
 struct add_ {};
 export constexpr const add_ add = add_{};
 
+struct raw_ {};
+export constexpr const raw_ raw = raw_{};
+
+export template <std::size_t N> struct format {
+  char value[N];
+
+  constexpr format(const char (&str)[N]) {
+    for (std::size_t i = 0; i < N; ++i)
+      value[i] = str[i];
+  }
+};
+
 export template <std::size_t N1 = 1, std::size_t N2 = 1> struct unpack {
   char single[N1] = "";
   char multiple[N2] = "";
@@ -116,7 +128,8 @@ std::string to_xml(const T &value, bool first = true) {
         std::define_static_array(std::meta::annotations_of(m));
 
     bool is_skip = false, is_attribute = false, is_add = false,
-         is_no_iter = false, is_unpack;
+         is_no_iter = false, is_unpack = false, is_raw = false;
+    std::optional<std::string> custom_format;
 
     template for (constexpr auto m_a : m_annotations) {
       if constexpr (std::meta::type_of(m_a) == ^^decltype(::serial_xml::skip)) {
@@ -131,6 +144,9 @@ std::string to_xml(const T &value, bool first = true) {
       } else if constexpr (std::meta::type_of(m_a) ==
                            ^^decltype(::serial_xml::add)) {
         is_add = true;
+      } else if constexpr (std::meta::type_of(m_a) ==
+                           ^^decltype(::serial_xml::raw)) {
+        is_raw = true;
       } else if constexpr (std::meta::template_of(std::meta::type_of(m_a)) ==
                            ^^::serial_xml::unpack) {
         static constexpr auto unpack_value =
@@ -165,7 +181,10 @@ std::string to_xml(const T &value, bool first = true) {
 
         body += std::format("<{}>", multiple_name);
         for (const auto &item : value.[:m:]) {
-          if constexpr (std::meta::is_class_type(std::meta::type_of(^^item)) ||
+          if constexpr ((std::meta::is_class_type(std::meta::type_of(^^item)) &&
+                         std::meta::annotations_of_with_type(
+                             m, ^^decltype(::serial_xml::no_iter))
+                             .empty()) ||
                         !std::formattable<
                             typename[:std::meta::type_of(^^item):], char>) {
             body += to_xml(item, false);
@@ -176,6 +195,11 @@ std::string to_xml(const T &value, bool first = true) {
         body += std::format("</{}>", multiple_name);
 
         is_unpack = true;
+      } else if constexpr (std::meta::template_of(std::meta::type_of(m_a)) ==
+                           ^^::serial_xml::format) {
+        static constexpr auto format_value =
+            std::meta::extract<typename[:std::meta::type_of(m_a):]>(m_a);
+        custom_format = std::string(format_value.value);
       }
     }
 
@@ -200,7 +224,13 @@ std::string to_xml(const T &value, bool first = true) {
 
       if (is_attribute) {
         static constexpr auto temp_name = std::meta::identifier_of(m);
-        temp_result = std::format(" {}=\"{}\"", temp_name, value.[:m:]);
+        if (custom_format) {
+          temp_result = std::format(std::dynamic_format(std::format(
+                                        " {{}}=\"{{{}}}\"", *custom_format)),
+                                    temp_name, value.[:m:]);
+        } else {
+          temp_result = std::format(" {}=\"{}\"", temp_name, value.[:m:]);
+        }
         result += temp_result;
       } else {
         std::string converted_temp_name;
@@ -213,9 +243,22 @@ std::string to_xml(const T &value, bool first = true) {
 
         static constexpr auto type = std::meta::type_of(m);
 
-        auto val = std::format("{}", value.[:m:]);
+        std::string val;
+        if (custom_format) {
+          val = std::format(
+              std::dynamic_format(std::format("{{{}}}", *custom_format)),
+              value.[:m:]);
+        } else {
+          val = std::format("{}", value.[:m:]);
+        }
         add_escapes(val);
-        temp_result += std::format("<{0}>{1}</{0}>", converted_temp_name, val);
+
+        if (is_raw) {
+          temp_result += std::format("{}", val);
+        } else {
+          temp_result +=
+              std::format("<{0}>{1}</{0}>", converted_temp_name, val);
+        }
 
         body += temp_result;
       }
