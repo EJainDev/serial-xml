@@ -121,7 +121,7 @@ std::string to_xml(const T &value, bool first = true) {
   std::string body;
   static constexpr auto members =
       std::define_static_array(std::meta::nonstatic_data_members_of(
-          M, std::meta::access_context::unchecked()));
+          M, std::meta::access_context::current()));
 
   template for (constexpr auto m : members) {
     static constexpr auto m_annotations =
