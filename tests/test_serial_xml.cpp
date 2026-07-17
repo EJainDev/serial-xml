@@ -29,7 +29,6 @@ TEST(Basic, StructWithAttribute) {
     [[= serial_xml::attribute]] int x;
   };
   StructWithAttribute obj{42};
-
   ASSERT_EQ(clean_to_xml(obj), "<StructWithAttribute x=\"42\"/>");
 }
 
