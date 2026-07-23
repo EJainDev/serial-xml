@@ -228,10 +228,14 @@ int count_escapes(const std::unique_ptr<bool[]> &escape_flags,
   return count;
 }
 
-void copy_with_escapes(char *buf, std::string_view input,
-                       std::unique_ptr<bool[]> escape_flags, int padded_size) {
+std::size_t copy_with_escapes(char *buf, std::string_view input,
+                              std::unique_ptr<bool[]> escape_flags,
+                              int padded_size) {
+  const char *original_buf = buf;
+
   auto *escape_flags_ptr =
       reinterpret_cast<std::uint64_t *>(escape_flags.get());
+
   for (std::size_t i = 0; i < padded_size; ++i) {
     int last = 0;
 
@@ -276,6 +280,8 @@ void copy_with_escapes(char *buf, std::string_view input,
       escape_flags_ptr[i] &= (escape_flags_ptr[i] - 1);
     }
   }
+
+  return buf - original_buf;
 }
 
 template <char const *name, char const *format>
@@ -333,17 +339,18 @@ void add_attribute(std::string &result, const auto &value) {
     result.resize_and_overwrite(
         result.size() + prefix_size + 1 + value.size() + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
+          const char *original_buf = buf;
+
           std::memcpy(buf, prefix, prefix_size);
 
           buf += prefix_size;
 
-          copy_with_escapes(buf, value, std::move(std::get<0>(escape_result)),
-                            std::get<1>(escape_result));
-
-          buf += value.size();
+          buf += copy_with_escapes(buf, value,
+                                   std::move(std::get<0>(escape_result)),
+                                   std::get<1>(escape_result));
 
           *buf = '"';
-          return max_size;
+          return (buf + 1) - original_buf;
         });
   } else {
     static constexpr auto gen_format = std::format("{{:{}}}", format);
@@ -352,21 +359,28 @@ void add_attribute(std::string &result, const auto &value) {
     buffer.reserve(256);
     std::format_to(std::back_inserter(buffer), gen_format, value);
 
-    result.resize_and_overwrite(result.size() + prefix_size + buffer.size() + 1,
-                                [&](char *buf, std::size_t max_size) {
-                                  std::memcpy(buf, prefix, prefix_size);
+    auto escape_result = get_escape_bitmask(buffer);
 
-                                  buf += prefix_size;
+    auto num_escapes =
+        count_escapes(std::get<0>(escape_result), std::get<1>(escape_result));
 
-                                  std::memcpy(buf, buffer.data(),
-                                              buffer.size());
+    result.resize_and_overwrite(
+        result.size() + prefix_size + buffer.size() + 1 + (num_escapes * 5),
+        [&](char *buf, std::size_t max_size) {
+          const char *original_buf = buf;
 
-                                  buf += buffer.size();
+          std::memcpy(buf, prefix, prefix_size);
 
-                                  *buf = '"';
+          buf += prefix_size;
 
-                                  return max_size;
-                                });
+          buf += copy_with_escapes(buf, buffer,
+                                   std::move(std::get<0>(escape_result)),
+                                   std::get<1>(escape_result));
+
+          *buf = '"';
+
+          return (buf + 1) - original_buf;
+        });
   }
 }
 
@@ -440,18 +454,19 @@ void add_child(std::string &result, const auto &value) {
     result.resize_and_overwrite(
         result.size() + combined_size + value.size() + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
+          const auto original_buf = buf;
+
           std::memcpy(buf, opening_tag, opening_tag_size);
 
           buf += opening_tag_size;
 
-          copy_with_escapes(buf, value, std::move(std::get<0>(escape_result)),
-                            std::get<1>(escape_result));
-
-          buf += value.size();
+          buf += copy_with_escapes(buf, value,
+                                   std::move(std::get<0>(escape_result)),
+                                   std::get<1>(escape_result));
 
           std::memcpy(buf, closing_tag, closing_tag_size);
 
-          return max_size;
+          return (buf + closing_tag_size) - original_buf;
         });
   } else {
     static constexpr auto gen_format = std::format("{{:{}}}", format);
@@ -472,14 +487,14 @@ void add_child(std::string &result, const auto &value) {
 
           buf += opening_tag_size;
 
-          copy_with_escapes(buf, buffer, std::get<0>(escape_result),
-                            std::get<1>(escape_result));
+          buf += copy_with_escapes(buf, buffer, std::get<0>(escape_result),
+                                   std::get<1>(escape_result));
 
           buf += buffer.size();
 
           std::memcpy(buf, closing_tag, closing_tag_size);
 
-          return max_size;
+          return (buf + closing_tag_size) - original_buf;
         });
   }
 }
