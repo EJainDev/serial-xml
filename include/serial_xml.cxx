@@ -738,9 +738,9 @@ void to_xml(const T &value, std::string &result, bool first,
 
 export template <typename T>
   requires(std::is_class_v<T>)
-std::string to_xml(const T &value) {
+std::string to_xml(const T &value, bool first = true) {
   std::string result;
-  to_xml(value, result, true);
+  to_xml(value, result, first);
   return result;
 }
 
