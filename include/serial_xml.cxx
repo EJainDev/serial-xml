@@ -483,6 +483,8 @@ void add_child(std::string &result, const auto &value) {
     result.resize_and_overwrite(
         result.size() + combined_size + buffer.size() + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
+          const auto original_buf = buf;
+
           std::memcpy(buf, opening_tag, opening_tag_size);
 
           buf += opening_tag_size;
