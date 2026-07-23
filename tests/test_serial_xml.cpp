@@ -4,10 +4,7 @@ import std;
 
 import serial_xml;
 
-std::string clean_to_xml(auto obj) {
-  return serial_xml::to_xml(obj).substr(
-      std::string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>").size());
-}
+std::string clean_to_xml(auto obj) { return serial_xml::to_xml(obj, false); }
 
 TEST(Basic, EmptyStruct) {
   struct EmptyStruct {};
@@ -175,4 +172,75 @@ TEST(STL, NoIter) {
   };
   NoIter obj{{1, 2, 3}};
   ASSERT_EQ(clean_to_xml(obj), "<NoIter><values>[1, 2, 3]</values></NoIter>");
+}
+
+TEST(STL, NestedVector) {
+  struct NestedVector {
+    std::vector<std::vector<int>> values;
+  };
+  NestedVector obj{{{1, 2}, {3, 4}}};
+  ASSERT_EQ(clean_to_xml(obj),
+            "<NestedVector><values><element>[1, 2]</element><element>[3, "
+            "4]</element></values></NestedVector>");
+}
+
+template <typename T> struct CustomList {
+  T data[16];
+  std::size_t sz = 0;
+
+  constexpr CustomList() = default;
+  constexpr CustomList(std::initializer_list<T> init) {
+    for (auto v : init) {
+      if (sz < 16)
+        data[sz++] = v;
+    }
+  }
+
+  using iterator = const T *;
+  using const_iterator = const T *;
+  using value_type = T;
+  using size_type = std::size_t;
+
+  constexpr iterator begin() const { return data; }
+  constexpr iterator end() const { return data + sz; }
+  constexpr const_iterator cbegin() const { return data; }
+  constexpr const_iterator cend() const { return data + sz; }
+
+  constexpr size_type size() const { return sz; }
+  constexpr bool empty() const { return sz == 0; }
+
+  constexpr const T &operator[](std::size_t i) const { return data[i]; }
+};
+
+TEST(Basic, Iter) {
+  struct Iter {
+    [[= serial_xml::iter{"value", "values"}]] CustomList<int> values;
+  };
+
+  Iter obj{{1, 2, 3}};
+  ASSERT_EQ(clean_to_xml(obj),
+            "<Iter><values><value>1</value><value>2</value><value>3</"
+            "value></values></Iter>");
+}
+
+TEST(Basic, InvalidNames) {
+  struct InvalidName1 {
+    int _x;
+  } unnamed{3};
+
+  ASSERT_THROW(clean_to_xml(unnamed), std::logic_error);
+
+  struct InvalidName2 {
+    int xml_x;
+  } unnamed2{3};
+
+  ASSERT_THROW(clean_to_xml(unnamed2), std::logic_error);
+}
+
+TEST(Basic, InvalidAnnotationCombinations) {
+  struct InvalidCombination1 {
+    [[ = serial_xml::unpack, = serial_xml::attribute ]] int x;
+  } unnamed{3};
+
+  ASSERT_THROW(clean_to_xml(unnamed), std::logic_error);
 }

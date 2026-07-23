@@ -544,15 +544,7 @@ bool handle_stl(std::string &result, std::string &body, const auto &value) {
       static constexpr auto item_m_t = std::meta::dealias(^^decltype(value[0]));
 
       for (const auto &item : value) {
-        if constexpr (std::meta::has_parent(item_m_t) &&
-                      std::meta::parent_of(item_m_t) ==
-                          std::meta::parent_of(^^std::optional)) {
-          if (!handle_stl<false, single_name, format>(result, body, item)) {
-            add_child<single_name, format>(body, item.value());
-          }
-        } else {
-          add_child<single_name, format>(body, item);
-        }
+        add_child<single_name, format>(body, item);
       }
       body += end;
 
@@ -607,8 +599,6 @@ void to_xml(const T &value, std::string &result, bool first,
       if constexpr (std::meta::has_identifier(M)) {
         static constexpr auto temp_name = std::meta::identifier_of(M);
         name = std::string(temp_name);
-      } else {
-        name = "object";
       }
     }
   }
@@ -647,7 +637,8 @@ void to_xml(const T &value, std::string &result, bool first,
                                         })) ||
                   view_name[0] == '_' || view_name[0] == '-' ||
                   view_name[0] == '.' || is_num(view_name[0]) ||
-                  std::ranges::starts_with(view_name, "xml")) {
+                  std::ranges::starts_with(view_name,
+                                           std::string_view("xml"))) {
       throw std::logic_error(std::format("Invalid XML name: '{}'", view_name));
     } else if constexpr (is_unpack && is_attribute) {
       throw std::logic_error(std::format(
@@ -657,71 +648,75 @@ void to_xml(const T &value, std::string &result, bool first,
           "[[serial_xml::unpack]], please add [[serial_xml::no_unpack]] to the "
           "member with the name '{}'",
           view_name));
-    }
+    } else {
 
-    bool handled_stl = false;
+      bool handled_stl = false;
 
-    if constexpr (!iter_names.has_value() &&
-                  std::meta::has_parent(std::meta::type_of(m))) {
-      if constexpr (std::meta::parent_of(std::meta::type_of(m)) ==
-                    std::meta::parent_of(^^std::optional)) {
-        handled_stl =
-            handle_stl<is_attribute, is_no_iter, name,
-                       (custom_format) ? *custom_format
-                                       : std::define_static_string("")>(
-                result, body, value.[:m:]);
-      }
-    }
-    if (!handled_stl) {
-      if constexpr (is_unpack) {
-        to_xml(value.[:m:], body, false, name);
-      } else if constexpr (iter_names.has_value() &&
-                           std::meta::is_class_type(std::meta::type_of(m)) &&
-                           std::ranges::range<
-                               typename[:std::meta::type_of(m):]>) {
-        body += std::format("<{}>", iter_names->second);
-
-        if constexpr (is_attribute &&
-                      std::meta::is_class_type(std::meta::type_of(m)) &&
-                      is_unpack &&
-                      !std::formattable<
-                          typename[:std::meta::type_of(m):], char>) {
-          throw std::logic_error(
-              "Cannot use [[serial_xml::attribute]] on a class "
-              "type (i.e. a type that is broken down into its "
-              "members) without [[serial_xml::no_unpack]]. Either add "
-              "[[serial_xml::no_unpack]], remove [[serial_xml::attribute]], or "
-              "add support for std::format.");
+      if constexpr (!iter_names.has_value() &&
+                    std::meta::has_parent(std::meta::type_of(m))) {
+        if constexpr (std::meta::parent_of(std::meta::type_of(m)) ==
+                      std::meta::parent_of(^^std::optional)) {
+          handled_stl =
+              handle_stl<is_attribute, is_no_iter, name,
+                         (custom_format) ? *custom_format
+                                         : std::define_static_string("")>(
+                  result, body, value.[:m:]);
         }
+      }
+      if (!handled_stl) {
+        if constexpr (is_unpack) {
+          to_xml(value.[:m:], body, false, name);
+        } else if constexpr (iter_names.has_value() &&
+                             std::meta::is_class_type(std::meta::type_of(m)) &&
+                             std::ranges::range<
+                                 typename[:std::meta::type_of(m):]>) {
+          body += std::format("<{}>", iter_names->second);
 
-        for (const auto &item : value.[:m:]) {
-          if constexpr (is_unpack) {
-            to_xml(item, body, false, iter_names->first);
-          } else {
-            if constexpr (custom_format.has_value()) {
-              add_child<iter_names->first, *custom_format>(body, item);
+          if constexpr (is_attribute &&
+                        std::meta::is_class_type(std::meta::type_of(m)) &&
+                        is_unpack &&
+                        !std::formattable<
+                            typename[:std::meta::type_of(m):], char>) {
+            throw std::logic_error(
+                "Cannot use [[serial_xml::attribute]] on a class "
+                "type (i.e. a type that is broken down into its "
+                "members) without [[serial_xml::no_unpack]]. Either add "
+                "[[serial_xml::no_unpack]], remove [[serial_xml::attribute]], "
+                "or "
+                "add support for std::format.");
+          }
+
+          for (const auto &item : value.[:m:]) {
+            if constexpr (is_unpack) {
+              to_xml(item, body, false, iter_names->first);
             } else {
-              add_child<iter_names->first>(body, item);
+              if constexpr (custom_format.has_value()) {
+                add_child<iter_names->first, *custom_format>(body, item);
+              } else {
+                add_child<iter_names->first, std::define_static_string("")>(
+                    body, item);
+              }
             }
           }
-        }
-        body += std::format("</{}>", iter_names->second);
-      } else {
-        if constexpr (is_attribute) {
-          if constexpr (custom_format.has_value()) {
-            add_attribute<name, *custom_format>(result, value.[:m:]);
-          } else {
-            add_attribute<name, std::define_static_string("")>(result,
-                                                               value.[:m:]);
-          }
+          body += std::format("</{}>", iter_names->second);
         } else {
-          if constexpr (is_raw) {
-            body += std::format("{}", value.[:m:]);
-          } else {
+          if constexpr (is_attribute) {
             if constexpr (custom_format.has_value()) {
-              add_child<name, *custom_format>(body, value.[:m:]);
+              add_attribute<name, *custom_format>(result, value.[:m:]);
             } else {
-              add_child<name, std::define_static_string("")>(body, value.[:m:]);
+              add_attribute<name, std::define_static_string("")>(result,
+                                                                 value.[:m:]);
+            }
+          } else {
+            if constexpr (is_raw) {
+              body += std::format("{}", value.[:m:]);
+            } else {
+              if constexpr (custom_format.has_value()) {
+                add_child<name, *custom_format>(body, value.[:m:]);
+              } else {
+                add_child<name, std::define_static_string("")>(body,
+                                                               value.[:m:]);
+              }
             }
           }
         }
