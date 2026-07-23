@@ -123,12 +123,7 @@ template <std::meta::info m> consteval auto get_annotations() {
       }
 
       if constexpr (sizeof(iter_value.single) == 1) {
-        if constexpr (std::meta::has_identifier(m)) {
-          static constexpr auto temp_name = std::meta::identifier_of(m);
-          single_name = std::string(temp_name);
-        } else {
-          single_name = "element";
-        }
+        single_name = "element";
       } else {
         static constexpr auto temp_name = iter_value.single;
         single_name = std::string(temp_name);
@@ -236,9 +231,9 @@ std::size_t copy_with_escapes(char *buf, std::string_view input,
   auto *escape_flags_ptr =
       reinterpret_cast<std::uint64_t *>(escape_flags.get());
 
-  for (std::size_t i = 0; i < padded_size; ++i) {
-    int last = 0;
+  int last = 0;
 
+  for (std::size_t i = 0; i < padded_size; ++i) {
     while (escape_flags_ptr[i] != 0) {
       const int idx = std::countr_zero(escape_flags_ptr[i]) / sizeof(bool);
 
@@ -281,7 +276,9 @@ std::size_t copy_with_escapes(char *buf, std::string_view input,
     }
   }
 
-  return buf - original_buf;
+  std::memcpy(buf, input.data() + last, input.size() - last);
+
+  return (buf + (input.size() - last)) - original_buf;
 }
 
 template <char const *name, char const *format>
@@ -294,12 +291,16 @@ void add_attribute(std::string &result, const auto &value) {
   static constexpr auto prefix_size = std::get<1>(prefix_result);
   static constexpr auto gen_format = std::string("{:") + format + "}";
 
-  if constexpr (std::is_arithmetic_v<T> && sizeof(T) <= 64) {
+  if constexpr (std::is_arithmetic_v<T> && sizeof(T) <= 64 && format == "") {
     if constexpr (std::is_floating_point_v<T>) {
       static constexpr auto format_resize = 311 + prefix_size + 1;
 
+      const auto original_size = result.size();
+
       result.resize_and_overwrite(
           result.size() + format_resize, [&](char *buf, std::size_t max_size) {
+            buf += original_size;
+
             std::memcpy(buf, prefix, prefix_size);
 
             buf += prefix_size;
@@ -308,7 +309,7 @@ void add_attribute(std::string &result, const auto &value) {
 
             *ptr = '"';
 
-            return prefix_size + ((ptr + 1) - buf);
+            return original_size + prefix_size + ((ptr + 1) - buf);
           });
     } else if constexpr (std::is_integral_v<T>) {
       static constexpr auto format_resize = 20 + prefix_size + 1;
@@ -336,9 +337,13 @@ void add_attribute(std::string &result, const auto &value) {
     auto num_escapes =
         count_escapes(std::get<0>(escape_result), std::get<1>(escape_result));
 
+    const auto original_size = result.size();
+
     result.resize_and_overwrite(
         result.size() + prefix_size + 1 + value.size() + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
+          buf += original_size;
+
           const char *original_buf = buf;
 
           std::memcpy(buf, prefix, prefix_size);
@@ -350,10 +355,11 @@ void add_attribute(std::string &result, const auto &value) {
                                    std::get<1>(escape_result));
 
           *buf = '"';
-          return (buf + 1) - original_buf;
+          return original_size + (buf + 1) - original_buf;
         });
   } else {
-    static constexpr auto gen_format = std::format("{{:{}}}", format);
+    static constexpr auto gen_format =
+        std::define_static_string(std::string("{:") + format + '}');
 
     std::string buffer [[indeterminate]];
     buffer.reserve(256);
@@ -364,9 +370,13 @@ void add_attribute(std::string &result, const auto &value) {
     auto num_escapes =
         count_escapes(std::get<0>(escape_result), std::get<1>(escape_result));
 
+    const auto original_size = result.size();
+
     result.resize_and_overwrite(
-        result.size() + prefix_size + buffer.size() + 1 + (num_escapes * 5),
+        original_size + prefix_size + buffer.size() + 1 + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
+          buf += original_size;
+
           const char *original_buf = buf;
 
           std::memcpy(buf, prefix, prefix_size);
@@ -379,7 +389,7 @@ void add_attribute(std::string &result, const auto &value) {
 
           *buf = '"';
 
-          return (buf + 1) - original_buf;
+          return original_size + (buf + 1) - original_buf;
         });
   }
 }
@@ -401,7 +411,7 @@ template <auto name> consteval auto get_tags() {
                     std::define_static_string(closing_tag), closing_tag.size()};
 }
 
-template <auto name, char const *format>
+template <char const *name, char const *format>
 void add_child(std::string &result, const auto &value) {
   using T = typename std::decay_t<decltype(value)>;
   static constexpr auto m_t = ^^T;
@@ -413,12 +423,15 @@ void add_child(std::string &result, const auto &value) {
   static constexpr auto closing_tag_size = std::get<3>(tags);
   static constexpr auto combined_size = opening_tag_size + closing_tag_size;
 
-  if constexpr (std::is_arithmetic_v<T> && sizeof(T) <= 64) {
+  const auto original_size = result.size();
+
+  if constexpr (std::is_arithmetic_v<T> && sizeof(T) <= 64 && format == "") {
     if constexpr (std::is_floating_point_v<T>) {
       static constexpr auto format_resize = 311 + combined_size;
-
       result.resize_and_overwrite(
-          result.size() + format_resize, [&](char *buf, std::size_t max_size) {
+          original_size + format_resize, [&](char *buf, std::size_t max_size) {
+            buf += original_size;
+
             std::memcpy(buf, opening_tag, opening_tag_size);
 
             buf += opening_tag_size;
@@ -433,7 +446,9 @@ void add_child(std::string &result, const auto &value) {
       static constexpr auto format_resize = 20 + combined_size;
 
       result.resize_and_overwrite(
-          result.size() + format_resize, [&](char *buf, std::size_t max_size) {
+          original_size + format_resize, [&](char *buf, std::size_t max_size) {
+            buf += original_size;
+
             std::memcpy(buf, opening_tag, opening_tag_size);
 
             buf += opening_tag_size;
@@ -452,9 +467,11 @@ void add_child(std::string &result, const auto &value) {
         count_escapes(std::get<0>(escape_result), std::get<1>(escape_result));
 
     result.resize_and_overwrite(
-        result.size() + combined_size + value.size() + (num_escapes * 5),
+        original_size + combined_size + value.size() + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
           const auto original_buf = buf;
+
+          buf += original_size;
 
           std::memcpy(buf, opening_tag, opening_tag_size);
 
@@ -469,7 +486,8 @@ void add_child(std::string &result, const auto &value) {
           return (buf + closing_tag_size) - original_buf;
         });
   } else {
-    static constexpr auto gen_format = std::format("{{:{}}}", format);
+    static constexpr auto gen_format =
+        std::define_static_string(std::string("{:") + format + '}');
 
     std::string buffer [[indeterminate]];
     buffer.reserve(256);
@@ -481,18 +499,19 @@ void add_child(std::string &result, const auto &value) {
         count_escapes(std::get<0>(escape_result), std::get<1>(escape_result));
 
     result.resize_and_overwrite(
-        result.size() + combined_size + buffer.size() + (num_escapes * 5),
+        original_size + combined_size + buffer.size() + (num_escapes * 5),
         [&](char *buf, std::size_t max_size) {
           const auto original_buf = buf;
+
+          buf += original_size;
 
           std::memcpy(buf, opening_tag, opening_tag_size);
 
           buf += opening_tag_size;
 
-          buf += copy_with_escapes(buf, buffer, std::get<0>(escape_result),
+          buf += copy_with_escapes(buf, buffer,
+                                   std::move(std::get<0>(escape_result)),
                                    std::get<1>(escape_result));
-
-          buf += buffer.size();
 
           std::memcpy(buf, closing_tag, closing_tag_size);
 
@@ -501,30 +520,41 @@ void add_child(std::string &result, const auto &value) {
   }
 }
 
-template <auto is_attribute, auto name, char const *format = "">
+template <bool is_attribute, bool is_no_iter, char const *name,
+          char const *format>
 bool handle_stl(std::string &result, std::string &body, const auto &value) {
-  static constexpr auto m_t =
-      std::meta::template_of(^^std::decay_t<decltype(value)>);
+  using T = std::decay_t<decltype(value)>;
+
+  static constexpr auto m_t = std::meta::template_of(std::meta::dealias(^^T));
 
   if constexpr (!is_attribute) {
-    if constexpr (m_t == ^^std::vector || m_t == ^^std::array ||
-                  m_t == ^^std::inplace_vector || m_t == ^^std::deque ||
-                  m_t == ^^std::forward_list || m_t == ^^std::span ||
-                  m_t == ^^std::valarray || m_t == ^^std::set ||
-                  m_t == ^^std::unordered_set || m_t == ^^std::multiset ||
-                  m_t == ^^std::unordered_multiset) {
-      static constexpr auto start = std::format("<{}>", name);
-      static constexpr auto end = std::format("</{}>", name);
-      result += start;
+    if constexpr (!is_no_iter &&
+                  (m_t == ^^std::vector || m_t == ^^std::array ||
+                   m_t == ^^std::inplace_vector || m_t == ^^std::deque ||
+                   m_t == ^^std::forward_list || m_t == ^^std::span ||
+                   m_t == ^^std::valarray || m_t == ^^std::set ||
+                   m_t == ^^std::unordered_set || m_t == ^^std::multiset ||
+                   m_t == ^^std::unordered_multiset)) {
+      static constexpr auto tags = get_tags<name>();
+      static constexpr auto start = std::get<0>(tags);
+      static constexpr auto end = std::get<2>(tags);
+      body += start;
+
+      static constexpr auto single_name = std::define_static_string("element");
+      static constexpr auto item_m_t = std::meta::dealias(^^decltype(value[0]));
+
       for (const auto &item : value) {
-        if constexpr (std::meta::parent_of(^^decltype(item)) ==
-                      std::meta::parent_of(^^std::optional)) {
-          handle_stl<false, name, format>(result, body, item);
+        if constexpr (std::meta::has_parent(item_m_t) &&
+                      std::meta::parent_of(item_m_t) ==
+                          std::meta::parent_of(^^std::optional)) {
+          if (!handle_stl<false, single_name, format>(result, body, item)) {
+            add_child<single_name, format>(body, item.value());
+          }
         } else {
-          add_child<name, format>(body, item);
+          add_child<single_name, format>(body, item);
         }
       }
-      result += end;
+      body += end;
 
       return true;
     }
@@ -635,13 +665,16 @@ void to_xml(const T &value, std::string &result, bool first,
                   std::meta::has_parent(std::meta::type_of(m))) {
       if constexpr (std::meta::parent_of(std::meta::type_of(m)) ==
                     std::meta::parent_of(^^std::optional)) {
-        handled_stl = handle_stl<is_attribute, name, custom_format>(
-            result, body, value.[:m:]);
+        handled_stl =
+            handle_stl<is_attribute, is_no_iter, name,
+                       (custom_format) ? *custom_format
+                                       : std::define_static_string("")>(
+                result, body, value.[:m:]);
       }
     }
     if (!handled_stl) {
       if constexpr (is_unpack) {
-        to_xml(value.[:m:], body, false);
+        to_xml(value.[:m:], body, false, name);
       } else if constexpr (iter_names.has_value() &&
                            std::meta::is_class_type(std::meta::type_of(m)) &&
                            std::ranges::range<
