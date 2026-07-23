@@ -1,2 +1,2 @@
-add_executable(serial_xml_full_example all.cpp)
-target_link_libraries(serial_xml_full_example PRIVATE serial_xml)
+add_executable(basic_example basic.cpp)
+target_link_libraries(basic_example PRIVATE serial_xml)
