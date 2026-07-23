@@ -17,54 +17,54 @@ TEST(Basic, EmptyStruct) {
   ASSERT_EQ(xml, "<?xml version=\"1.0\" encoding=\"UTF-8\"?><EmptyStruct/>");
 }
 
-TEST(Basic, EmptyStructWithName) {
-  struct[[= serial_xml::name{"MyEmptyStruct"}]] EmptyStructWithName {};
-  EmptyStructWithName obj;
+TEST(Basic, EmptyName) {
+  struct[[= serial_xml::name{"MyEmptyStruct"}]] EmptyName {};
+  EmptyName obj;
 
   ASSERT_EQ(clean_to_xml(obj), "<MyEmptyStruct/>");
 }
 
-TEST(Basic, StructWithAttribute) {
-  struct StructWithAttribute {
+TEST(Basic, Attribute) {
+  struct Attribute {
     [[= serial_xml::attribute]] int x;
   };
-  StructWithAttribute obj{42};
-  ASSERT_EQ(clean_to_xml(obj), "<StructWithAttribute x=\"42\"/>");
+  Attribute obj{42};
+  ASSERT_EQ(clean_to_xml(obj), "<Attribute x=\"42\"/>");
 }
 
-TEST(Basic, StructWithNameAndAttribute) {
-  struct[[= serial_xml::name{"MyStruct"}]] StructWithNameAndAttribute {
+TEST(Basic, NamedAttribute) {
+  struct[[= serial_xml::name{"MyStruct"}]] NamedAttribute {
     [[= serial_xml::attribute]] int x;
   };
-  StructWithNameAndAttribute obj{42};
+  NamedAttribute obj{42};
 
   ASSERT_EQ(clean_to_xml(obj), "<MyStruct x=\"42\"/>");
 }
 
-TEST(Basic, StructWithNameAndAttributeAndSkip) {
-  struct[[= serial_xml::name{"MyStruct"}]] StructWithNameAndAttributeAndSkip {
+TEST(Basic, AttributeAndSkip) {
+  struct[[= serial_xml::name{"MyStruct"}]] AttributeAndSkip {
     [[= serial_xml::attribute]] int x;
     [[= serial_xml::skip]] int y;
   };
-  StructWithNameAndAttributeAndSkip obj{42, 100};
+  AttributeAndSkip obj{42, 100};
 
   ASSERT_EQ(clean_to_xml(obj), "<MyStruct x=\"42\"/>");
 }
 
-TEST(Basic, StructWithNameAndChild) {
-  struct[[= serial_xml::name{"MyStruct"}]] StructWithNameAndChild {
+TEST(Basic, Child) {
+  struct[[= serial_xml::name{"MyStruct"}]] Child {
     int x;
   };
-  StructWithNameAndChild obj{42};
+  Child obj{42};
 
   ASSERT_EQ(clean_to_xml(obj), "<MyStruct><x>42</x></MyStruct>");
 }
 
-TEST(Basic, StructWithChild) {
-  struct StructWithChild {
+TEST(Basic, NamedChild) {
+  struct Child {
     int x;
   };
-  StructWithChild obj{42};
+  Child obj{42};
 
-  ASSERT_EQ(clean_to_xml(obj), "<StructWithChild><x>42</x></StructWithChild>");
+  ASSERT_EQ(clean_to_xml(obj), "<Child><x>42</x></Child>");
 }
